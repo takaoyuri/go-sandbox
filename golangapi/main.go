@@ -103,6 +103,8 @@ func main() {
 					// todo
 
 				}
+			} else {
+				rest.NotFound(w, req)
 			}
 		}),
 	)
