@@ -2,7 +2,7 @@ package main
 
 import (
 	"bufio"
-	"golangapi/util"
+	"github.com/takaoyuri/go-sandbox/golangapi/util"
 	"log"
 	"net/http"
 	"os"

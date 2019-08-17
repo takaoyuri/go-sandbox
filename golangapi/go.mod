@@ -1,4 +1,4 @@
-module golangapi
+module github.com/takaoyuri/go-sandbox/golangapi
 
 go 1.12
 
