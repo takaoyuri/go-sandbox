@@ -41,8 +41,8 @@ func main() {
 
 	reader := address.NewReader(transform.NewReader(ioReader, japanese.ShiftJIS.NewDecoder()))
 
-	var myaddresses map[string]*gabs.Container
-	myaddresses = map[string]*gabs.Container{}
+	var myaddresses map[string]myaddress.Address
+	myaddresses = map[string]myaddress.Address{}
 
 	for {
 		cols, err := reader.Read()
@@ -55,13 +55,7 @@ func main() {
 
 		for _, row := range rows {
 			address := myaddress.NewAddress(row)
-
-			jsonObj := gabs.New()
-			jsonObj.Set(address.Town, "town")
-			jsonObj.Set(address.City, "city")
-			jsonObj.Set(address.Pref, "pref")
-
-			myaddresses[address.Zip] = jsonObj
+			myaddresses[address.Zip] = address
 		}
 	}
 
@@ -97,7 +91,11 @@ func main() {
 		rest.Get("/zip_code/#zipcode", func(w rest.ResponseWriter, req *rest.Request) {
 			zip := util.ParseZipCode(req.PathParam("zipcode"))
 			if child, ok := myaddresses[zip]; ok {
-				w.WriteJson(child.Data())
+				jsonObj := gabs.New()
+				jsonObj.Set(child.Town, "town")
+				jsonObj.Set(child.City, "city")
+				jsonObj.Set(child.Pref, "pref")
+				w.WriteJson(jsonObj.Data())
 			} else {
 				rest.NotFound(w, req)
 			}
