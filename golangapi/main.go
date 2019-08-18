@@ -1,77 +1,80 @@
 package main
 
 import (
-	"bufio"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 
+	"golang.org/x/text/encoding/japanese"
+	"golang.org/x/text/transform"
+
+	myaddress "github.com/takaoyuri/go-sandbox/golangapi/address"
 	"github.com/takaoyuri/go-sandbox/golangapi/util"
 
 	"github.com/Jeffail/gabs/v2"
 	"github.com/ant0ine/go-json-rest/rest"
+	"github.com/inouet/ken-all/address"
 )
 
+//
+func getAbsPath(relPath string) string {
+	absPath, err := filepath.Abs(relPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return absPath
+}
+
 func main() {
-	kenAllFileName := "./ken-all.json"
-	kenAllPath, err := filepath.Abs(kenAllFileName)
+
+	kenAllCsv := "./KEN_ALL.CSV"
+	ioReader, err := os.Open(getAbsPath(kenAllCsv))
+
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	file, err := os.Open(kenAllPath)
-	if err != nil {
-		log.Fatal(err)
-	}
+	defer ioReader.Close()
 
-	var scanedText []string
+	reader := address.NewReader(transform.NewReader(ioReader, japanese.ShiftJIS.NewDecoder()))
 
-	scanner := bufio.NewScanner(file)
-	scanner.Scan()
+	var myaddresses map[string]*gabs.Container
+	myaddresses = map[string]*gabs.Container{}
 
-	for scanner.Scan() {
-		scanedText = append(scanedText, scanner.Text())
-	}
+	for {
+		cols, err := reader.Read()
 
-	joinedText := strings.Join(scanedText, ",")
-	joinedText = "{\"data\":[" + joinedText + "]}"
+		if err == io.EOF {
+			break
+		}
 
-	jsonParsed, err := gabs.ParseJSON([]byte(joinedText))
-	if err != nil {
-		panic(err)
-	}
+		rows := address.NewRows(cols)
 
-	// addressMap map[zipcode]addressData{}
-	var addressList map[string][]*gabs.Container
-	addressList = map[string][]*gabs.Container{}
-	for _, child := range jsonParsed.Path("data").Children() {
-		value, ok := child.Search("zip").Data().(string)
-		if _, ok2 := addressList[value]; ok && !ok2 {
+		for _, row := range rows {
+			address := myaddress.NewAddress(row)
+
 			jsonObj := gabs.New()
-			jsonObj.Set(child.Path("town").Data().(string), "town")
-			jsonObj.Set(child.Path("city").Data().(string), "city")
-			jsonObj.Set(child.Path("pref").Data().(string), "pref")
+			jsonObj.Set(address.Town, "town")
+			jsonObj.Set(address.City, "city")
+			jsonObj.Set(address.Pref, "pref")
 
-			addressList[value] = append(addressList[value], jsonObj)
+			myaddresses[address.Zip] = jsonObj
 		}
 	}
-	file.Close()
-	jsonParsed = nil
+
+	fmt.Println("start server")
 
 	api := rest.NewApi()
-	// api.Use(rest.DefaultDevStack...)
 
 	api.Use(
 		[]rest.Middleware{
 			&rest.AccessLogApacheMiddleware{},
 			&rest.TimerMiddleware{},
 			&rest.RecorderMiddleware{},
-			&rest.RecoverMiddleware{
-				EnableResponseStackTrace: true,
-			},
-			&rest.JsonIndentMiddleware{},
+			&rest.RecoverMiddleware{},
 			&rest.ContentTypeCheckerMiddleware{},
 			&rest.CorsMiddleware{
 				RejectNonCorsRequests: false,
@@ -87,22 +90,14 @@ func main() {
 			&rest.JsonpMiddleware{
 				CallbackNameKey: "cb",
 			},
-			// &rest.GzipMiddleware{},
 		}...,
 	)
 
 	router, err := rest.MakeRouter(
-
-		rest.Get("/#zipcode", func(w rest.ResponseWriter, req *rest.Request) {
+		rest.Get("/zip_code/#zipcode", func(w rest.ResponseWriter, req *rest.Request) {
 			zip := util.ParseZipCode(req.PathParam("zipcode"))
-
-			if child, ok := addressList[zip]; ok {
-				if len(child) == 1 {
-					w.WriteJson(child[0].Data())
-				} else {
-					// todo
-
-				}
+			if child, ok := myaddresses[zip]; ok {
+				w.WriteJson(child.Data())
 			} else {
 				rest.NotFound(w, req)
 			}
