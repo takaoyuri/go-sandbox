@@ -18,4 +18,5 @@ COPY KEN_ALL.CSV .
 RUN addgroup go && \
     adduser -D -G go go && \
     chown -R go:go /app/app
+USER go
 CMD [ "./app" ]
