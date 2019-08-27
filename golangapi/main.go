@@ -15,8 +15,10 @@ import (
 	"github.com/takaoyuri/go-sandbox/golangapi/util"
 
 	"github.com/Jeffail/gabs/v2"
-	"github.com/ant0ine/go-json-rest/rest"
 	"github.com/inouet/ken-all/address"
+
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 )
 
 //
@@ -61,47 +63,33 @@ func main() {
 
 	fmt.Println("start server")
 
-	api := rest.NewApi()
+	e := echo.New()
 
-	api.Use(
-		[]rest.Middleware{
-			&rest.AccessLogApacheMiddleware{},
-			&rest.TimerMiddleware{},
-			&rest.RecorderMiddleware{},
-			&rest.RecoverMiddleware{},
-			&rest.ContentTypeCheckerMiddleware{},
-			&rest.CorsMiddleware{
-				RejectNonCorsRequests: false,
-				OriginValidator: func(origin string, request *rest.Request) bool {
-					return true //origin == "http://my.other.host"
-				},
-				AllowedMethods: []string{"GET", "POST", "PUT"},
-				AllowedHeaders: []string{
-					"Accept", "Content-Type", "X-Custom-Header", "Origin"},
-				AccessControlAllowCredentials: true,
-				AccessControlMaxAge:           3600,
-			},
-			&rest.JsonpMiddleware{
-				CallbackNameKey: "cb",
-			},
-		}...,
-	)
+	e.Use(middleware.Logger())
+	e.Use(middleware.Recover())
+	e.Use(middleware.CORS())
 
-	router, err := rest.MakeRouter(
-		rest.Get("/zip_code/#zipcode", func(w rest.ResponseWriter, req *rest.Request) {
-			zip := util.ParseZipCode(req.PathParam("zipcode"))
-			if child, ok := myaddresses[zip]; ok {
-				jsonObj := gabs.New()
-				jsonObj.Set(child.Town, "town")
-				jsonObj.Set(child.City, "city")
-				jsonObj.Set(child.Pref, "pref")
-				w.WriteJson(jsonObj.Data())
+	e.GET("/zip_code/:zipcode", func(c echo.Context) error {
+
+		zip := util.ParseZipCode(c.Param("zipcode"))
+		if child, ok := myaddresses[zip]; ok {
+
+			jsonObj := gabs.New()
+			jsonObj.Set(child.Town, "town")
+			jsonObj.Set(child.City, "city")
+			jsonObj.Set(child.Pref, "pref")
+
+			cb := c.QueryParam("cb")
+			if len(cb) > 0 {
+				return c.JSONP(http.StatusOK, cb, jsonObj.Data())
 			} else {
-				rest.NotFound(w, req)
+				return c.JSON(http.StatusOK, jsonObj.Data())
 			}
-		}),
-	)
 
-	api.SetApp(router)
-	log.Fatal(http.ListenAndServe(":8080", api.MakeHandler()))
+		} else {
+			return echo.NewHTTPError(http.StatusNotFound, "Not Found")
+		}
+	})
+
+	e.Logger.Fatal(e.Start(":8080"))
 }
