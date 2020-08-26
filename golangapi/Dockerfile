@@ -13,9 +13,10 @@ RUN CGO_ENABLED=0 go build -o /go/bin/app
 FROM alpine:latest
 WORKDIR /app
 COPY --from=build /go/bin/app .
-COPY ken-all.json .
+COPY KEN_ALL.CSV .
 # add user
 RUN addgroup go && \
     adduser -D -G go go && \
     chown -R go:go /app/app
+USER go
 CMD [ "./app" ]

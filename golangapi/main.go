@@ -1,114 +1,95 @@
 package main
 
 import (
-	"bufio"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 
+	"golang.org/x/text/encoding/japanese"
+	"golang.org/x/text/transform"
+
+	myaddress "github.com/takaoyuri/go-sandbox/golangapi/address"
 	"github.com/takaoyuri/go-sandbox/golangapi/util"
 
 	"github.com/Jeffail/gabs/v2"
-	"github.com/ant0ine/go-json-rest/rest"
+	"github.com/inouet/ken-all/address"
+
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 )
 
+//
+func getAbsPath(relPath string) string {
+	absPath, err := filepath.Abs(relPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return absPath
+}
+
 func main() {
-	kenAllFileName := "./ken-all.json"
-	kenAllPath, err := filepath.Abs(kenAllFileName)
+
+	kenAllCsv := "./KEN_ALL.CSV"
+	ioReader, err := os.Open(getAbsPath(kenAllCsv))
+
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	file, err := os.Open(kenAllPath)
-	if err != nil {
-		log.Fatal(err)
-	}
+	defer ioReader.Close()
 
-	var scanedText []string
+	reader := address.NewReader(transform.NewReader(ioReader, japanese.ShiftJIS.NewDecoder()))
 
-	scanner := bufio.NewScanner(file)
-	scanner.Scan()
+	var myaddresses map[string]myaddress.Address
+	myaddresses = map[string]myaddress.Address{}
 
-	for scanner.Scan() {
-		scanedText = append(scanedText, scanner.Text())
-	}
+	for {
+		cols, err := reader.Read()
 
-	joinedText := strings.Join(scanedText, ",")
-	joinedText = "{\"data\":[" + joinedText + "]}"
+		if err == io.EOF {
+			break
+		}
 
-	jsonParsed, err := gabs.ParseJSON([]byte(joinedText))
-	if err != nil {
-		panic(err)
-	}
+		rows := address.NewRows(cols)
 
-	// addressMap map[zipcode]addressData{}
-	var addressList map[string][]*gabs.Container
-	addressList = map[string][]*gabs.Container{}
-	for _, child := range jsonParsed.Path("data").Children() {
-		value, ok := child.Search("zip").Data().(string)
-		if _, ok2 := addressList[value]; ok && !ok2 {
-			jsonObj := gabs.New()
-			jsonObj.Set(child.Path("town").Data().(string), "town")
-			jsonObj.Set(child.Path("city").Data().(string), "city")
-			jsonObj.Set(child.Path("pref").Data().(string), "pref")
-
-			addressList[value] = append(addressList[value], jsonObj)
+		for _, row := range rows {
+			address := myaddress.NewAddress(row)
+			myaddresses[address.Zip] = address
 		}
 	}
-	file.Close()
-	jsonParsed = nil
 
-	api := rest.NewApi()
-	// api.Use(rest.DefaultDevStack...)
+	fmt.Println("start server")
 
-	api.Use(
-		[]rest.Middleware{
-			&rest.AccessLogApacheMiddleware{},
-			&rest.TimerMiddleware{},
-			&rest.RecorderMiddleware{},
-			&rest.RecoverMiddleware{
-				EnableResponseStackTrace: true,
-			},
-			&rest.JsonIndentMiddleware{},
-			&rest.ContentTypeCheckerMiddleware{},
-			&rest.CorsMiddleware{
-				RejectNonCorsRequests: false,
-				OriginValidator: func(origin string, request *rest.Request) bool {
-					return true //origin == "http://my.other.host"
-				},
-				AllowedMethods: []string{"GET", "POST", "PUT"},
-				AllowedHeaders: []string{
-					"Accept", "Content-Type", "X-Custom-Header", "Origin"},
-				AccessControlAllowCredentials: true,
-				AccessControlMaxAge:           3600,
-			},
-			&rest.JsonpMiddleware{
-				CallbackNameKey: "cb",
-			},
-			// &rest.GzipMiddleware{},
-		}...,
-	)
+	e := echo.New()
 
-	router, err := rest.MakeRouter(
+	e.Use(middleware.Logger())
+	e.Use(middleware.Recover())
+	e.Use(middleware.CORS())
 
-		rest.Get("/#zipcode", func(w rest.ResponseWriter, req *rest.Request) {
-			zip := util.ParseZipCode(req.PathParam("zipcode"))
+	e.GET("/zip_code/:zipcode", func(c echo.Context) error {
 
-			if child, ok := addressList[zip]; ok {
-				if len(child) == 1 {
-					w.WriteJson(child[0].Data())
-				} else {
-					// todo
+		zip := util.ParseZipCode(c.Param("zipcode"))
+		if child, ok := myaddresses[zip]; ok {
 
-				}
+			jsonObj := gabs.New()
+			jsonObj.Set(child.Town, "town")
+			jsonObj.Set(child.City, "city")
+			jsonObj.Set(child.Pref, "pref")
+
+			cb := c.QueryParam("cb")
+			if len(cb) > 0 {
+				return c.JSONP(http.StatusOK, cb, jsonObj.Data())
 			} else {
-				rest.NotFound(w, req)
+				return c.JSON(http.StatusOK, jsonObj.Data())
 			}
-		}),
-	)
 
-	api.SetApp(router)
-	log.Fatal(http.ListenAndServe(":8080", api.MakeHandler()))
+		} else {
+			return echo.NewHTTPError(http.StatusNotFound, "Not Found")
+		}
+	})
+
+	e.Logger.Fatal(e.Start(":8080"))
 }
