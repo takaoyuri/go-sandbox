@@ -1,13 +1,24 @@
 module github.com/takaoyuri/go-sandbox/golangapi
 
-go 1.12
+go 1.24.3
 
 require (
 	github.com/Jeffail/gabs/v2 v2.6.1
 	github.com/inouet/ken-all v0.0.3
-	github.com/kr/text v0.2.0 // indirect
 	github.com/labstack/echo/v4 v4.10.2
-	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect
 	golang.org/x/text v0.7.0
-	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
+)
+
+require (
+	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
+	github.com/ktnyt/go-moji v1.0.0 // indirect
+	github.com/labstack/gommon v0.4.0 // indirect
+	github.com/mattn/go-colorable v0.1.13 // indirect
+	github.com/mattn/go-isatty v0.0.17 // indirect
+	github.com/valyala/bytebufferpool v1.0.0 // indirect
+	github.com/valyala/fasttemplate v1.2.2 // indirect
+	golang.org/x/crypto v0.6.0 // indirect
+	golang.org/x/net v0.7.0 // indirect
+	golang.org/x/sys v0.5.0 // indirect
+	golang.org/x/time v0.3.0 // indirect
 )
