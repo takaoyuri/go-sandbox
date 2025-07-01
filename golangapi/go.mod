@@ -6,6 +6,7 @@ require (
 	github.com/Jeffail/gabs/v2 v2.6.1
 	github.com/inouet/ken-all v0.0.3
 	github.com/labstack/echo/v4 v4.10.2
+	github.com/mattn/go-sqlite3 v1.14.17
 	golang.org/x/text v0.7.0
 )
 
